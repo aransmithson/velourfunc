@@ -1,0 +1,7 @@
+{
+  "name": "velour-proxy",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "description": "VELOUR API proxy for AdultWork — Netlify Serverless Function"
+}

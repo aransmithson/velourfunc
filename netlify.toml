@@ -1,0 +1,26 @@
+[build]
+  publish = "public"
+  functions = "netlify/functions"
+
+# Redirect all API-style paths to the proxy function
+# The :splat placeholder captures everything after the matched prefix
+
+[[redirects]]
+  from = "/health"
+  to = "/.netlify/functions/proxy?__path=/health"
+  status = 200
+
+[[redirects]]
+  from = "/debug/:slug"
+  to = "/.netlify/functions/proxy?__path=/debug/:slug"
+  status = 200
+
+[[redirects]]
+  from = "/api/lists/:slug"
+  to = "/.netlify/functions/proxy?__path=/api/lists/:slug"
+  status = 200
+
+[[redirects]]
+  from = "/api/search/:slug"
+  to = "/.netlify/functions/proxy?__path=/api/search/:slug"
+  status = 200
