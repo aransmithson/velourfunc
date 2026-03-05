@@ -243,10 +243,8 @@ export const handler = async (event) => {
       checkCredentials();
 
       const testParams = {
-        GenderIDs: "2",
         MinAge: 18,
-        MaxAge: 45,
-        CountryID: 1,
+        MaxAge: 99,
         PageNumber: 1,
         ProfilesPerPage: 5
       };
@@ -255,7 +253,7 @@ export const handler = async (event) => {
         const { data, status } = await getFromAdultWork("/search/searchProfiles", testParams, requestEnv);
         return jsonResponse({
           debug: true,
-          test: "Minimal search: Female, 18-45, UK, 5 results",
+          test: "Broadest possible search: any gender, 18-99, any country, 5 results",
           request: { params: testParams },
           response: { status, data },
           profileCount: data?.Profiles?.length ?? "N/A",
@@ -264,7 +262,7 @@ export const handler = async (event) => {
       } catch (err) {
         return jsonResponse({
           debug: true,
-          test: "Minimal search: Female, 18-45, UK, 5 results",
+          test: "Broadest possible search: any gender, 18-99, any country",
           request: { params: testParams },
           error: err.message,
         });
