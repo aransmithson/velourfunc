@@ -103,6 +103,42 @@ async function getFromAdultWork(apiPath, queryParams = {}, requestEnv = null) {
   return { data, status: response.status };
 }
 
+/**
+ * POST to AdultWork API with JSON body — used for search.
+ */
+async function postToAdultWork(apiPath, body = {}, requestEnv = null) {
+  checkCredentials();
+
+  const baseUrl = getBaseUrl(requestEnv);
+  const url = `${baseUrl}${apiPath}`;
+
+  console.log(`[VELOUR] → POST ${url}`);
+  console.log(`[VELOUR]   Body: ${JSON.stringify(body)}`);
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify(body),
+    redirect: "manual",
+  });
+
+  console.log(`[VELOUR] ← HTTP ${response.status} ${response.headers.get("content-type")} from ${apiPath}`);
+
+  const contentType = response.headers.get("content-type") || "";
+
+  if (!contentType.includes("application/json")) {
+    const text = await response.text();
+    throw new Error(
+      `HTTP ${response.status} — Non-JSON from AdultWork. ` +
+      `Content-Type: ${contentType}. ` +
+      `Preview: ${text.substring(0, 500)}`
+    );
+  }
+
+  const data = await response.json();
+  return { data, status: response.status };
+}
+
 
 // ── Main Handler ────────────────────────────────────────────────────
 
@@ -252,7 +288,7 @@ export const handler = async (event) => {
 
       console.log(`[VELOUR] Search params: ${JSON.stringify(params)}`);
 
-      const { data, status } = await getFromAdultWork("/Search/SearchProfiles", params, requestEnv);
+      const { data, status } = await postToAdultWork("/Search/SearchProfiles", params, requestEnv);
       const count = data?.Profiles?.length ?? "?";
       console.log(`[VELOUR] Search result: HTTP ${status}, profiles=${count}`);
       return jsonResponse(data, status);
