@@ -273,18 +273,35 @@ export const handler = async (event) => {
       try { body = JSON.parse(event.body || "{}"); }
       catch { return errorResponse("Invalid or missing JSON body", 400); }
 
-      // Map frontend field names → AdultWork API field names
+      // Map frontend field names → exact AdultWork API field names
+      // Docs: https://developers.adultwork.com — /v1/Search/SearchProfiles
       const params = {};
-      if (body.GenderId      != null) params.GenderIDs              = String(body.GenderId);
-      if (body.MinAge        != null) params.MinAge                 = body.MinAge;
-      if (body.MaxAge        != null) params.MaxAge                 = body.MaxAge;
-      if (body.Postcode      != null && body.Postcode !== "") params.LocationZipCode = body.Postcode;
-      if (body.Radius        != null) params.LocationProximityMiles = body.Radius;
-      if (body.OrientationId != null) params.OrientationIds         = String(body.OrientationId);
-      if (body.CountryId     != null) params.CountryID              = body.CountryId;
-      if (body.RegionId      != null) params.RegionID               = body.RegionId;
+
+      // GenderIDs — comma-separated string per docs
+      if (body.GenderId != null)      params.GenderIDs = String(body.GenderId);
+
+      // Age range — integers
+      if (body.MinAge != null)        params.MinAge = body.MinAge;
+      if (body.MaxAge != null)        params.MaxAge = body.MaxAge;
+
+      // Location: postcode requires radius, radius requires postcode
+      if (body.Postcode && body.Postcode !== "") {
+        params.LocationZipCode        = body.Postcode;
+        params.LocationProximityMiles = body.Radius || 50;  // default 50 miles if not set
+      }
+
+      // OrientationIds — comma-separated string per docs
+      if (body.OrientationId != null) params.OrientationIds = String(body.OrientationId);
+
+      // CountryID — integer, default to 1 (United Kingdom)
+      params.CountryID = body.CountryId != null ? body.CountryId : 1;
+
+      // RegionID — integer
+      if (body.RegionId != null)      params.RegionID = body.RegionId;
+
+      // Pagination
       params.PageNumber      = body.PageNumber ?? 1;
-      params.ProfilesPerPage = body.PageSize   ?? 20;
+      params.ProfilesPerPage = body.PageSize   ?? 50;
 
       console.log(`[VELOUR] Search params: ${JSON.stringify(params)}`);
 
