@@ -243,16 +243,19 @@ export const handler = async (event) => {
       checkCredentials();
 
       const testParams = {
-        IsEscort: true,
-        IsWebcam: true,
-        GenderIDs: "1"
+        GenderIDs: "2",
+        MinAge: 18,
+        MaxAge: 99,
+        CountryID: 1,
+        PageNumber: 1,
+        ProfilesPerPage: 5
       };
 
       try {
         const { data, status } = await getFromAdultWork("/search/searchProfiles", testParams, requestEnv);
         return jsonResponse({
           debug: true,
-          test: "Docs sample: IsEscort=true, IsWebcam=true, GenderIDs=1",
+          test: "Female, 18-99, UK, 5 results",
           request: { params: testParams },
           response: { status, data },
           profileCount: data?.Profiles?.length ?? "N/A",
@@ -261,7 +264,7 @@ export const handler = async (event) => {
       } catch (err) {
         return jsonResponse({
           debug: true,
-          test: "Docs sample: IsEscort=true, IsWebcam=true, GenderIDs=1",
+          test: "Female, 18-99, UK, 5 results",
           request: { params: testParams },
           error: err.message,
         });
