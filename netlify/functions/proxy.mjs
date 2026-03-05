@@ -242,7 +242,7 @@ export const handler = async (event) => {
     if (path === "/debug/search") {
       checkCredentials();
 
-      const testBody = {
+      const testParams = {
         GenderIDs: "2",
         MinAge: 18,
         MaxAge: 45,
@@ -251,43 +251,24 @@ export const handler = async (event) => {
         ProfilesPerPage: 5
       };
 
-      const baseUrl = getBaseUrl(requestEnv);
-      const targetUrl = `${baseUrl}/search/searchProfiles`;
-
-      console.log(`[VELOUR] Debug search → POST ${targetUrl}`);
-      console.log(`[VELOUR] Debug search body: ${JSON.stringify(testBody)}`);
-
-      const response = await fetch(targetUrl, {
-        method: "POST",
-        headers: authHeaders(),
-        body: JSON.stringify(testBody),
-        redirect: "manual",
-      });
-
-      const contentType = response.headers.get("content-type") || "";
-      const responseText = await response.text();
-
-      let parsed = null;
-      try { parsed = JSON.parse(responseText); } catch {}
-
-      return jsonResponse({
-        debug: true,
-        test: "Minimal search: Female, 18-45, UK, 5 results",
-        request: {
-          url: targetUrl,
-          method: "POST",
-          body: testBody,
-        },
-        response: {
-          status: response.status,
-          statusText: response.statusText,
-          contentType,
-          parsed: parsed,
-          raw: parsed ? undefined : responseText.substring(0, 2000),
-        },
-        profileCount: parsed?.Profiles?.length ?? "N/A",
-        totalResults: parsed?.ProfilesTotal ?? "N/A",
-      });
+      try {
+        const { data, status } = await getFromAdultWork("/search/searchProfiles", testParams, requestEnv);
+        return jsonResponse({
+          debug: true,
+          test: "Minimal search: Female, 18-45, UK, 5 results",
+          request: { params: testParams },
+          response: { status, data },
+          profileCount: data?.Profiles?.length ?? "N/A",
+          totalResults: data?.ProfilesTotal ?? "N/A",
+        });
+      } catch (err) {
+        return jsonResponse({
+          debug: true,
+          test: "Minimal search: Female, 18-45, UK, 5 results",
+          request: { params: testParams },
+          error: err.message,
+        });
+      }
     }
 
     // ── Lists: Genders ──────────────────────────────────────────
@@ -317,6 +298,7 @@ export const handler = async (event) => {
     }
 
     // ── Search Profiles ─────────────────────────────────────────
+    // Frontend sends POST with JSON body → proxy maps and forwards as GET to AdultWork
     if (path === "/api/search/profiles") {
       if (method !== "POST") {
         return errorResponse("Method not allowed — use POST", 405);
@@ -327,7 +309,6 @@ export const handler = async (event) => {
       catch { return errorResponse("Invalid or missing JSON body", 400); }
 
       // Map frontend field names → exact AdultWork API field names
-      // Docs: https://developers.adultwork.com — /v1/Search/SearchProfiles
       const params = {};
 
       // GenderIDs — comma-separated string per docs
@@ -358,7 +339,7 @@ export const handler = async (event) => {
 
       console.log(`[VELOUR] Search params: ${JSON.stringify(params)}`);
 
-      const { data, status } = await postToAdultWork("/search/searchProfiles", params, requestEnv);
+      const { data, status } = await getFromAdultWork("/search/searchProfiles", params, requestEnv);
       const count = data?.Profiles?.length ?? "?";
       console.log(`[VELOUR] Search result: HTTP ${status}, profiles=${count}`);
       return jsonResponse(data, status);
