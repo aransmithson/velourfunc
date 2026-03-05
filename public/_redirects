@@ -1,0 +1,3 @@
+/health /.netlify/functions/proxy/health 200
+/debug/* /.netlify/functions/proxy/debug/:splat 200
+/api/* /.netlify/functions/proxy/api/:splat 200
