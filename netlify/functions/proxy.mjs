@@ -1,19 +1,23 @@
 /**
- * VELOUR — Netlify Serverless Function API Proxy
+ * VELOUR — Netlify Serverless API Proxy
  *
- * Required Environment Variables (set in Netlify UI → Site Settings → Environment Variables):
+ * Environment Variables (set in Netlify Dashboard → Site → Environment Variables):
  *   API_KEY     — Your AdultWork API key
  *   API_SECRET  — Your AdultWork API secret
  *   ENVIRONMENT — "sandbox" or "live" (default: "sandbox")
+ *
+ * Replaces the Cloudflare Worker proxy. Netlify Functions run on AWS Lambda,
+ * which uses different IP ranges and should avoid AdultWork's Cloudflare
+ * managed challenge that blocks CF Worker IPs.
  */
+
+// ── Helpers ─────────────────────────────────────────────────────────
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, X-Environment",
 };
-
-// ── Helpers ──────────────────────────────────────────────────────────────
 
 function getBaseUrl(requestEnv) {
   const environment = requestEnv || process.env.ENVIRONMENT || "sandbox";
@@ -22,17 +26,18 @@ function getBaseUrl(requestEnv) {
     : "https://api-sandbox.adultwork.com/v1";
 }
 
-function jsonResponse(data, status = 200) {
-  return new Response(JSON.stringify(data), {
-    status,
+function jsonResponse(data, statusCode = 200) {
+  return {
+    statusCode,
     headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
-  });
+    body: JSON.stringify(data),
+  };
 }
 
-function errorResponse(message, status = 500, details = null) {
+function errorResponse(message, statusCode = 500, details = null) {
   return jsonResponse(
     { error: message, details, timestamp: new Date().toISOString() },
-    status
+    statusCode
   );
 }
 
@@ -40,24 +45,27 @@ function checkCredentials() {
   if (!process.env.API_KEY || !process.env.API_SECRET) {
     throw new Error(
       "API_KEY or API_SECRET not set. " +
-      "Netlify UI → Site Settings → Environment Variables → Add."
+      "Netlify Dashboard → Site → Environment Variables → Add variable."
     );
   }
 }
 
 /**
- * Auth headers — single format only per AdultWork docs.
+ * Auth headers — single format per AdultWork docs.
  */
 function authHeaders() {
   return {
-"X-ApiKey":     process.env.API_KEY,
-    "X-ApiSecret":  process.env.API_SECRET,
+    "ApiKey":       process.env.API_KEY,
+    "ApiSecret":    process.env.API_SECRET,
     "Accept":       "application/json",
     "Content-Type": "application/json",
     "User-Agent":   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
   };
 }
 
+/**
+ * GET from AdultWork API.
+ */
 async function getFromAdultWork(apiPath, queryParams = {}, requestEnv = null) {
   checkCredentials();
 
@@ -95,30 +103,28 @@ async function getFromAdultWork(apiPath, queryParams = {}, requestEnv = null) {
   return { data, status: response.status };
 }
 
-// ── Main Handler ─────────────────────────────────────────────────────────
 
-export default async (request, context) => {
-  const url = new URL(request.url);
+// ── Main Handler ────────────────────────────────────────────────────
 
-  // Strip the Netlify function prefix to get the clean route
-  // e.g. /.netlify/functions/proxy/health → /health
-  const path = url.pathname.replace(/^\/.netlify\/functions\/proxy/, "") || "/";
+export const handler = async (event) => {
+  const path   = event.path;
+  const method = event.httpMethod;
 
   // Handle CORS preflight
-  if (request.method === "OPTIONS") {
-    return new Response(null, { status: 204, headers: CORS_HEADERS });
+  if (method === "OPTIONS") {
+    return { statusCode: 204, headers: CORS_HEADERS, body: "" };
   }
 
   const requestEnv =
-    request.headers.get("X-Environment") ||
-    url.searchParams.get("env") ||
+    (event.headers["x-environment"]) ||
+    (event.queryStringParameters?.env) ||
     null;
 
-  console.log(`[VELOUR] ${request.method} ${path} | env=${requestEnv || process.env.ENVIRONMENT || "sandbox"}`);
+  console.log(`[VELOUR] ${method} ${path} | env=${requestEnv || process.env.ENVIRONMENT || "sandbox"}`);
 
   try {
 
-    // ── Health ────────────────────────────────────────────────────
+    // ── Health ──────────────────────────────────────────────────
     if (path === "/health") {
       return jsonResponse({
         status: "ok",
@@ -126,18 +132,18 @@ export default async (request, context) => {
         environment: requestEnv || process.env.ENVIRONMENT || "sandbox",
         baseUrl: getBaseUrl(requestEnv),
         credentials: {
-          api_key:    process.env.API_KEY    ? `✓ set — ${process.env.API_KEY.length} chars, starts "${process.env.API_KEY.substring(0,4)}..."` : "✗ MISSING",
-          api_secret: process.env.API_SECRET ? `✓ set — ${process.env.API_SECRET.length} chars, starts "${process.env.API_SECRET.substring(0,4)}..."` : "✗ MISSING",
+          api_key:    process.env.API_KEY    ? `✓ set — ${process.env.API_KEY.length} chars, starts "${process.env.API_KEY.substring(0, 4)}..."` : "✗ MISSING",
+          api_secret: process.env.API_SECRET ? `✓ set — ${process.env.API_SECRET.length} chars, starts "${process.env.API_SECRET.substring(0, 4)}..."` : "✗ MISSING",
         },
         timestamp: new Date().toISOString(),
       });
     }
 
-    // ── Debug: raw request to AdultWork ───────────────────────────
+    // ── Debug: raw request to AdultWork ─────────────────────────
     if (path === "/debug/raw") {
       checkCredentials();
-      const apiPath = url.searchParams.get("path") || "/Lists/GetGenders";
-      const baseUrl = getBaseUrl(requestEnv);
+      const apiPath   = event.queryStringParameters?.path || "/Lists/GetGenders";
+      const baseUrl   = getBaseUrl(requestEnv);
       const targetUrl = `${baseUrl}${apiPath}`;
 
       const response = await fetch(targetUrl, {
@@ -156,8 +162,8 @@ export default async (request, context) => {
           url: targetUrl,
           method: "GET",
           headers_sent: {
-            ApiKey:    process.env.API_KEY    ? `${process.env.API_KEY.substring(0,8)}... (${process.env.API_KEY.length} chars)` : "MISSING",
-            ApiSecret: process.env.API_SECRET ? `${process.env.API_SECRET.substring(0,4)}... (${process.env.API_SECRET.length} chars)` : "MISSING",
+            ApiKey:    process.env.API_KEY    ? `${process.env.API_KEY.substring(0, 8)}... (${process.env.API_KEY.length} chars)` : "MISSING",
+            ApiSecret: process.env.API_SECRET ? `${process.env.API_SECRET.substring(0, 4)}... (${process.env.API_SECRET.length} chars)` : "MISSING",
           },
         },
         response: {
@@ -170,10 +176,10 @@ export default async (request, context) => {
       });
     }
 
-    // ── Debug: verify credentials ────────────────────────────────
+    // ── Debug: verify credentials ───────────────────────────────
     if (path === "/debug/verify") {
       checkCredentials();
-      const baseUrl = getBaseUrl(requestEnv);
+      const baseUrl   = getBaseUrl(requestEnv);
       const targetUrl = `${baseUrl}/Account/VerifyCredentials`;
 
       const response = await fetch(targetUrl, {
@@ -215,38 +221,39 @@ export default async (request, context) => {
 
     // ── Lists: Regions ──────────────────────────────────────────
     if (path === "/api/lists/regions") {
-      const countryId = url.searchParams.get("countryId");
-      const params    = countryId ? { countryId } : {};
+      const countryId = event.queryStringParameters?.countryId;
+      const params    = countryId ? { CountryID: countryId } : {};
       const { data, status } = await getFromAdultWork("/Lists/GetRegions", params, requestEnv);
       return jsonResponse(data, status);
     }
 
     // ── Search Profiles ─────────────────────────────────────────
     if (path === "/api/search/profiles") {
-      if (request.method !== "POST") {
+      if (method !== "POST") {
         return errorResponse("Method not allowed — use POST", 405);
       }
 
       let body = {};
-      try { body = await request.json(); }
+      try { body = JSON.parse(event.body || "{}"); }
       catch { return errorResponse("Invalid or missing JSON body", 400); }
 
+      // Map frontend field names → AdultWork API field names
       const params = {};
-      if (body.GenderId      != null) params.genderId      = body.GenderId;
-      if (body.MinAge        != null) params.minAge        = body.MinAge;
-      if (body.MaxAge        != null) params.maxAge        = body.MaxAge;
-      if (body.Postcode      != null && body.Postcode !== "") params.postcode = body.Postcode;
-      if (body.Radius        != null) params.radius        = body.Radius;
-      if (body.OrientationId != null) params.orientationId = body.OrientationId;
-      if (body.CountryId     != null) params.countryId     = body.CountryId;
-      if (body.RegionId      != null) params.regionId      = body.RegionId;
-      params.pageNumber = body.PageNumber ?? 1;
-      params.pageSize   = body.PageSize   ?? 20;
+      if (body.GenderId      != null) params.GenderIDs              = String(body.GenderId);
+      if (body.MinAge        != null) params.MinAge                 = body.MinAge;
+      if (body.MaxAge        != null) params.MaxAge                 = body.MaxAge;
+      if (body.Postcode      != null && body.Postcode !== "") params.LocationZipCode = body.Postcode;
+      if (body.Radius        != null) params.LocationProximityMiles = body.Radius;
+      if (body.OrientationId != null) params.OrientationIds         = String(body.OrientationId);
+      if (body.CountryId     != null) params.CountryID              = body.CountryId;
+      if (body.RegionId      != null) params.RegionID               = body.RegionId;
+      params.PageNumber      = body.PageNumber ?? 1;
+      params.ProfilesPerPage = body.PageSize   ?? 20;
 
       console.log(`[VELOUR] Search params: ${JSON.stringify(params)}`);
 
       const { data, status } = await getFromAdultWork("/Search/SearchProfiles", params, requestEnv);
-      const count = data?.Profiles?.length ?? data?.Results?.length ?? "?";
+      const count = data?.Profiles?.length ?? "?";
       console.log(`[VELOUR] Search result: HTTP ${status}, profiles=${count}`);
       return jsonResponse(data, status);
     }
