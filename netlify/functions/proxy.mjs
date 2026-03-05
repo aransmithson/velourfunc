@@ -245,6 +245,7 @@ export const handler = async (event) => {
       const testParams = {
         MinAge: 18,
         MaxAge: 99,
+        CountryID: 1,
         PageNumber: 1,
         ProfilesPerPage: 5
       };
